@@ -330,97 +330,15 @@ int main(void)
 {
 	SetupHardware();
 
-	LEDs_SetAllLEDs(LEDMASK_USB_NOTREADY);
 	GlobalInterruptEnable();
 
 	for (;;)
 	{
-		MIDI_EventPacket_t ReceivedMIDIEvent;
-		if (MIDI_Device_ReceiveEventPacket(&Keyboard_MIDI_Interface, &ReceivedMIDIEvent))
-		{
-			if ((ReceivedMIDIEvent.Event == MIDI_EVENT(0, MIDI_COMMAND_NOTE_ON)) && ((ReceivedMIDIEvent.Data1 & 0x0F) == 0))
-			{
-				DDSNoteData *LRUNoteStruct = &NoteData[0];
-
-				/* Find a free entry in the note table to use for the note being turned on */
-				for (uint8_t i = 0; i < MAX_SIMULTANEOUS_NOTES; i++)
-				{
-					/* Check if the note is unused */
-					if (!(NoteData[i].Pitch))
-					{
-						/* If a note is unused, it's age is essentially infinite - always prefer unused note entries */
-						LRUNoteStruct = &NoteData[i];
-						break;
-					}
-					else if (NoteData[i].LRUAge >= LRUNoteStruct->LRUAge)
-					{
-						/* If an older entry that the current entry has been found, prefer overwriting that one */
-						LRUNoteStruct = &NoteData[i];
-					}
-
-					NoteData[i].LRUAge++;
-				}
-
-				/* Update the oldest note entry with the new note data and reset its age */
-				LRUNoteStruct->Pitch = ReceivedMIDIEvent.Data2;
-				LRUNoteStruct->TableIncrement = (uint32_t)(BASE_INCREMENT * SCALE_FACTOR) +
-												((uint32_t)(BASE_INCREMENT * NOTE_OCTIVE_RATIO * SCALE_FACTOR) *
-												 (ReceivedMIDIEvent.Data2 - BASE_PITCH_INDEX));
-				LRUNoteStruct->TablePosition = 0;
-				LRUNoteStruct->LRUAge = 0;
-
-				/* Turn on indicator LED to indicate note generation activity */
-				LEDs_SetAllLEDs(LEDS_LED1);
-			}
-			else if ((ReceivedMIDIEvent.Event == MIDI_EVENT(0, MIDI_COMMAND_NOTE_OFF)) && ((ReceivedMIDIEvent.Data1 & 0x0F) == 0))
-			{
-				bool FoundActiveNote = false;
-
-				/* Find the note in the note table to turn off */
-				for (uint8_t i = 0; i < MAX_SIMULTANEOUS_NOTES; i++)
-				{
-					if (NoteData[i].Pitch == ReceivedMIDIEvent.Data2)
-						NoteData[i].Pitch = 0;
-					else if (NoteData[i].Pitch)
-						FoundActiveNote = true;
-				}
-
-				/* If all notes off, turn off the indicator LED */
-				if (!(FoundActiveNote))
-					LEDs_SetAllLEDs(LEDS_NO_LEDS);
-			}
-		}
-
 		MIDI_Device_USBTask(&Keyboard_MIDI_Interface);
 		USB_USBTask();
 	}
 }
 
-/** ISR to handle the reloading of the PWM timer with the next sample. */
-ISR(TIMER0_COMPA_vect, ISR_BLOCK)
-{
-	uint16_t MixedSample = 0;
-
-	/* Sum together all the active notes to form a single sample */
-	for (uint8_t i = 0; i < MAX_SIMULTANEOUS_NOTES; i++)
-	{
-		/* A non-zero pitch indicates the note is active */
-		if (NoteData[i].Pitch)
-		{
-			/* Use the top 8 bits of the table position as the sample table index */
-			uint8_t TableIndex = (NoteData[i].TablePosition >> 24);
-
-			/* Add the new tone sample to the accumulator and increment the table position */
-			MixedSample += SineTable[TableIndex];
-			NoteData[i].TablePosition += NoteData[i].TableIncrement;
-		}
-	}
-
-	/* Output clamped mixed sample value to the PWM */
-	OCR3A = (MixedSample <= 0xFF) ? MixedSample : 0xFF;
-}
-
-/** Configures the board hardware and chip peripherals for the demo's functionality. */
 void SetupHardware(void)
 {
 #if (ARCH == ARCH_AVR8)
@@ -431,23 +349,7 @@ void SetupHardware(void)
 	/* Disable clock division */
 	clock_prescale_set(clock_div_1);
 #endif
-
-	/* Hardware Initialization */
-	LEDs_Init();
 	USB_Init();
-
-	/* Sample reload timer initialization */
-	TIMSK0 = (1 << OCIE0A);
-	OCR0A = (VIRTUAL_SAMPLE_TABLE_SIZE / 8);
-	TCCR0A = (1 << WGM01); // CTC mode
-	TCCR0B = (1 << CS01);  // Fcpu/8 speed
-
-	/* Set speaker as output */
-	DDRC |= (1 << 6);
-
-	/* PWM speaker timer initialization */
-	TCCR3A = ((1 << WGM31) | (1 << COM3A1) | (1 << COM3A0)); // Set on match, clear on TOP
-	TCCR3B = ((1 << WGM32) | (1 << CS30));					 // Fast 8-Bit PWM, Fcpu speed
 }
 
 /** Event handler for the library USB Connection event. */
@@ -458,11 +360,6 @@ void EVENT_USB_Device_Connect(void)
 /** Event handler for the library USB Disconnection event. */
 void EVENT_USB_Device_Disconnect(void)
 {
-	LEDs_SetAllLEDs(LEDMASK_USB_NOTREADY);
-
-	/* Disable any notes currently being played */
-	for (uint8_t i = 0; i < MAX_SIMULTANEOUS_NOTES; i++)
-		NoteData[i].Pitch = 0;
 }
 
 /** Event handler for the library USB Configuration Changed event. */
@@ -471,38 +368,11 @@ void EVENT_USB_Device_ConfigurationChanged(void)
 	bool ConfigSuccess = true;
 
 	ConfigSuccess &= MIDI_Device_ConfigureEndpoints(&Keyboard_MIDI_Interface);
-
-	LEDs_SetAllLEDs(ConfigSuccess ? LEDMASK_USB_READY : LEDMASK_USB_ERROR);
 }
 
 /** Event handler for the library USB Control Request event including Kornel's enter_bootloader hack. */
 void EVENT_USB_Device_ControlRequest(void)
 {
-	if (((USB_ControlRequest.bmRequestType & CONTROL_REQTYPE_TYPE) == REQTYPE_VENDOR) && ((USB_ControlRequest.bmRequestType & CONTROL_REQTYPE_RECIPIENT) == REQREC_DEVICE))
-	{
-		if ((USB_ControlRequest.bmRequestType & CONTROL_REQTYPE_DIRECTION) == REQDIR_HOSTTODEVICE)
-		{
-			switch (USB_ControlRequest.bRequest)
-			{
-			case 0x01:
-				Endpoint_ClearSETUP();
-				Endpoint_ClearStatusStage();
-				USB_USBTask();
-				Delay_MS(200);
 
-				enter_bootloader();
-				break;
-			}
-		}
-		else
-		{
-			switch (USB_ControlRequest.bRequest)
-			{
-			}
-		}
-	}
-	else
-	{
-		MIDI_Device_ProcessControlRequest(&Keyboard_MIDI_Interface);
-	}
+	MIDI_Device_ProcessControlRequest(&Keyboard_MIDI_Interface);
 }
