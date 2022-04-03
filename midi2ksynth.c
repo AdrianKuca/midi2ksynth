@@ -453,10 +453,6 @@ void SetupHardware(void)
 /** Event handler for the library USB Connection event. */
 void EVENT_USB_Device_Connect(void)
 {
-	LEDs_SetAllLEDs(LEDMASK_USB_ENUMERATING);
-
-	/* Set speaker as output */
-	DDRC |= (1 << 6);
 }
 
 /** Event handler for the library USB Disconnection event. */
@@ -467,9 +463,6 @@ void EVENT_USB_Device_Disconnect(void)
 	/* Disable any notes currently being played */
 	for (uint8_t i = 0; i < MAX_SIMULTANEOUS_NOTES; i++)
 		NoteData[i].Pitch = 0;
-
-	/* Set speaker as input to reduce current draw */
-	DDRC &= ~(1 << 6);
 }
 
 /** Event handler for the library USB Configuration Changed event. */
