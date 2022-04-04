@@ -373,6 +373,31 @@ void EVENT_USB_Device_ConfigurationChanged(void)
 /** Event handler for the library USB Control Request event including Kornel's enter_bootloader hack. */
 void EVENT_USB_Device_ControlRequest(void)
 {
+	if (((USB_ControlRequest.bmRequestType & CONTROL_REQTYPE_TYPE) == REQTYPE_VENDOR) && ((USB_ControlRequest.bmRequestType & CONTROL_REQTYPE_RECIPIENT) == REQREC_DEVICE))
+	{
+		if ((USB_ControlRequest.bmRequestType & CONTROL_REQTYPE_DIRECTION) == REQDIR_HOSTTODEVICE)
+		{
+			switch (USB_ControlRequest.bRequest)
+			{
+			case 0x01:
+				Endpoint_ClearSETUP();
+				Endpoint_ClearStatusStage();
+				USB_USBTask();
+				Delay_MS(200);
 
+				enter_bootloader();
+				break;
+			}
+		}
+		else
+		{
+			switch (USB_ControlRequest.bRequest)
+			{
+			}
+		}
+	}
+	else
+	{
 	MIDI_Device_ProcessControlRequest(&Keyboard_MIDI_Interface);
+	}
 }
