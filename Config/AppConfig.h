@@ -43,6 +43,6 @@
 #ifndef _APP_CONFIG_H_
 #define _APP_CONFIG_H_
 
-	#define MAX_SIMULTANEOUS_NOTES     3
+#define MAX_SIMULTANEOUS_NOTES 1
 
 #endif
