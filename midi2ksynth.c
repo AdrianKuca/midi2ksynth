@@ -70,7 +70,7 @@ int main(void)
 	SetupHardware();
 	// 131 IN ATMEGA DOCS
 	DDRB = (1 << 6);						// output
-	TCCR4A = (1 << WGM10) || (1 << COM4B1); // PWM, Phase and Frequency Correct || Clear OCn1B on compare match when upcounting. Set OCn1B on compare match when down-counting.
+	TCCR4A = (1 << COM4B1); // FastPWM mode, Cleared on Compare Match. Set when TCNT4 = 0x000. 
 	TCCR4B = (0 << CS40) || (1 << PWM4B);	// No prescaling, PWM
 
 	GlobalInterruptEnable();
@@ -112,7 +112,7 @@ int main(void)
 				LRUNoteStruct->TablePosition = 0;
 				LRUNoteStruct->LRUAge = 0;
 
-				TCCR4B = (1 << CS40) || (1 << PWM4B);
+				TCCR4A = (1 << COM4B1);
 			}
 			else if ((ReceivedMIDIEvent.Event == MIDI_EVENT(0, MIDI_COMMAND_NOTE_OFF)) && ((ReceivedMIDIEvent.Data1 & 0x0F) == 0))
 			{
@@ -125,7 +125,7 @@ int main(void)
 					{
 						NoteData[i].Pitch = 0;
 						current_pitch = 0;
-						TCCR4B = (0 << CS40) || (1 << PWM4B);
+						TCCR4A = (0 << COM4B1);
 					}
 					else if (NoteData[i].Pitch)
 						FoundActiveNote = true;
