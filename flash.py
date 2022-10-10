@@ -5,7 +5,7 @@ import usb.util
 from sys import platform
 if platform == "linux" or platform == "linux2":
     AVRDUDE = "avrdude"
-    DEVICE = "/dev/ttyACM0"
+    DEVICE = "/dev/ttyACM1"
 elif platform == "win32":
     AVRDUDE = "D:\\avrdude\\avrdude.exe"
     DEVICE = "usb:2341:0036"
