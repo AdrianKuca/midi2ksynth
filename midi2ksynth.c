@@ -69,10 +69,16 @@ int main(void)
 {
 	SetupHardware();
 	// 131 IN ATMEGA DOCS
-	DDRB = (1 << 6);						// output
-	TCCR4A = (1 << COM4B1); // FastPWM mode, Cleared on Compare Match. Set when TCNT4 = 0x000. 
-	TCCR4B = (0 << CS40) || (1 << PWM4B);	// No prescaling, PWM
-
+	PLLFRQ = (PLLFRQ & ~(1<<PLLTM1)) | (1 << PLLTM0); // PLL enable for faster clock
+	DDRB = (1 << 6) | (1 << 0);				// output pwm; output led yellow
+	DDRD = (1 << 5);						// output led green
+	TCCR4A = (1 << COM4B1) | (1 << PWM4B);  // Cleared on Compare Match. Set when TCNT4 = 0x000; FAST PWM mode
+	TCCR4B = (1 << CS40);	// No prescaling
+	TC4H = 0x3;
+	OCR4C = 0xff;
+	// TCCR4C = ;
+	// TCCR4D = ; // FAST PWM
+	// TCCR4E = ;
 	GlobalInterruptEnable();
 	uint8_t current_pitch = 0;
 	for (;;)
@@ -132,10 +138,17 @@ int main(void)
 				}
 			}
 		}
-		// Use PB6 to output voltage corresponding to the pitch.
-		// PWM Output B for Timer/Counter1
+		// Uses PB6 to output voltage corresponding to the pitch.
 		// 124 in atmega32u4 docs
-		OCR4B = current_pitch << 1; // pitch is 0-127
+		if(current_pitch != 0 ){
+			uint32_t big_pitch = ((uint32_t) current_pitch << 28) / (127 - BASE_PITCH_INDEX); // pitch index / pitch range
+			TC4H = (uint8_t) 	(big_pitch>>24 & 0x3);
+			OCR4B = (uint8_t) 	(big_pitch>>16 & 0xff); 
+		}
+		else{
+			TC4H = 0;
+			OCR4B = 0;
+		}
 		MIDI_Device_USBTask(&Keyboard_MIDI_Interface);
 		USB_USBTask();
 	}
