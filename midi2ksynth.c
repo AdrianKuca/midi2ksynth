@@ -88,25 +88,20 @@ int main(void)
 		{
 			if ((ReceivedMIDIEvent.Event == MIDI_EVENT(0, MIDI_COMMAND_NOTE_ON)) && ((ReceivedMIDIEvent.Data1 & 0x0F) == 0))
 			{
+				PIND = (1 << 5);
+
 				DDSNoteData *LRUNoteStruct = &NoteData[0];
-
-				/* Find a free entry in the note table to use for the note being turned on */
-				for (uint8_t i = 0; i < MAX_SIMULTANEOUS_NOTES; i++)
+				/* Check if the note is unused */
+				if (!(NoteData[0].Pitch))
 				{
-					/* Check if the note is unused */
-					if (!(NoteData[i].Pitch))
-					{
-						/* If a note is unused, it's age is essentially infinite - always prefer unused note entries */
-						LRUNoteStruct = &NoteData[i];
-						break;
-					}
-					else if (NoteData[i].LRUAge >= LRUNoteStruct->LRUAge)
-					{
-						/* If an older entry that the current entry has been found, prefer overwriting that one */
-						LRUNoteStruct = &NoteData[i];
-					}
-
-					NoteData[i].LRUAge++;
+					/* If a note is unused, it's age is essentially infinite - always prefer unused note entries */
+					LRUNoteStruct = &NoteData[0];
+				}
+				else if (NoteData[0].LRUAge >= LRUNoteStruct->LRUAge)
+				{
+					/* If an older entry that the current entry has been found, prefer overwriting that one */
+					LRUNoteStruct = &NoteData[0];
+					NoteData[0].LRUAge++;
 				}
 
 				/* Update the oldest note entry with the new note data and reset its age */
@@ -114,27 +109,16 @@ int main(void)
 				current_pitch = ReceivedMIDIEvent.Data2;
 				LRUNoteStruct->TableIncrement = (uint32_t)(BASE_INCREMENT * SCALE_FACTOR) +
 												((uint32_t)(BASE_INCREMENT * NOTE_OCTIVE_RATIO * SCALE_FACTOR) *
-												 (ReceivedMIDIEvent.Data2 - BASE_PITCH_INDEX));
+												 (current_pitch - BASE_PITCH_INDEX));
 				LRUNoteStruct->TablePosition = 0;
 				LRUNoteStruct->LRUAge = 0;
-
-				TCCR4A = (1 << COM4B1);
 			}
 			else if ((ReceivedMIDIEvent.Event == MIDI_EVENT(0, MIDI_COMMAND_NOTE_OFF)) && ((ReceivedMIDIEvent.Data1 & 0x0F) == 0))
 			{
-				bool FoundActiveNote = false;
-
-				/* Find the note in the note table to turn off */
-				for (uint8_t i = 0; i < MAX_SIMULTANEOUS_NOTES; i++)
+				if (NoteData[0].Pitch == current_pitch)
 				{
-					if (NoteData[i].Pitch == ReceivedMIDIEvent.Data2)
-					{
-						NoteData[i].Pitch = 0;
-						current_pitch = 0;
-						TCCR4A = (0 << COM4B1);
-					}
-					else if (NoteData[i].Pitch)
-						FoundActiveNote = true;
+					NoteData[0].Pitch = 0;
+					current_pitch = 0;
 				}
 			}
 		}
